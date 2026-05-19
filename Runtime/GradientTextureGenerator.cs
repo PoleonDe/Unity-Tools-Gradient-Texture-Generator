@@ -1,4 +1,7 @@
+using System;
+using System.Collections.Generic;
 using UnityEngine;
+using UnityObject = UnityEngine.Object;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -25,6 +28,12 @@ namespace Control.Tools
         [SerializeField, HideInInspector]
         private Texture2D generatedTexture;
 
+        // Preserves assets created when the generator inherited Odin's SerializedScriptableObject.
+#pragma warning disable 0169
+        [SerializeField, HideInInspector]
+        private LegacyOdinSerializationData serializationData;
+#pragma warning restore 0169
+
         public Gradient Gradient => gradient;
 
         public int Width => width;
@@ -38,15 +47,19 @@ namespace Control.Tools
 #endif
         }
 
-        private void ClampWidth()
+        private bool ClampWidth()
         {
-            width = Mathf.Max(1, width);
+            int clampedWidth = Mathf.Max(1, width);
+            if (width == clampedWidth)
+                return false;
+
+            width = clampedWidth;
+            return true;
         }
 
 #if UNITY_EDITOR
         private void OnValidate()
         {
-            ClampWidth();
             QueueRegeneration();
         }
 
@@ -74,7 +87,7 @@ namespace Control.Tools
 
         private void RegenerateInternal()
         {
-            ClampWidth();
+            bool generatorChanged = ClampWidth();
 
             if (EditorApplication.isCompiling)
                 return;
@@ -86,25 +99,36 @@ namespace Control.Tools
             if (string.IsNullOrEmpty(assetPath))
                 return;
 
-            EnsureGeneratedTextureExists(assetPath);
-            UpdateTexturePixels();
+            bool textureChanged = EnsureGeneratedTextureExists(assetPath, out bool generatorReferenceChanged);
+            generatorChanged |= generatorReferenceChanged;
+            textureChanged |= UpdateTexturePixels();
 
-            EditorUtility.SetDirty(generatedTexture);
-            EditorUtility.SetDirty(this);
-            AssetDatabase.SaveAssetIfDirty(generatedTexture);
-            AssetDatabase.SaveAssetIfDirty(this);
+            if (textureChanged)
+            {
+                EditorUtility.SetDirty(generatedTexture);
+                AssetDatabase.SaveAssetIfDirty(generatedTexture);
+            }
+
+            if (generatorChanged)
+            {
+                EditorUtility.SetDirty(this);
+                AssetDatabase.SaveAssetIfDirty(this);
+            }
         }
 
-        private void EnsureGeneratedTextureExists(string assetPath)
+        private bool EnsureGeneratedTextureExists(string assetPath, out bool generatorReferenceChanged)
         {
+            generatorReferenceChanged = false;
+            bool changed = false;
+
             if (generatedTexture != null && AssetDatabase.IsSubAsset(generatedTexture))
             {
-                generatedTexture.name = name;
-                generatedTexture.hideFlags = HideFlags.None;
-                return;
+                changed |= ApplyTextureAssetSettings(generatedTexture);
+                return changed;
             }
 
             generatedTexture = FindExistingGeneratedTexture(assetPath);
+            generatorReferenceChanged = true;
 
             if (generatedTexture == null)
             {
@@ -117,18 +141,17 @@ namespace Control.Tools
                 };
 
                 AssetDatabase.AddObjectToAsset(generatedTexture, this);
+                return true;
             }
-            else
-            {
-                generatedTexture.name = name;
-                generatedTexture.hideFlags = HideFlags.None;
-            }
+
+            changed |= ApplyTextureAssetSettings(generatedTexture);
+            return changed;
         }
 
         private Texture2D FindExistingGeneratedTexture(string assetPath)
         {
-            Object[] bundledAssets = AssetDatabase.LoadAllAssetsAtPath(assetPath);
-            foreach (Object bundledAsset in bundledAssets)
+            UnityObject[] bundledAssets = AssetDatabase.LoadAllAssetsAtPath(assetPath);
+            foreach (UnityObject bundledAsset in bundledAssets)
             {
                 if (bundledAsset == null || bundledAsset == this)
                     continue;
@@ -140,15 +163,48 @@ namespace Control.Tools
             return null;
         }
 
-        private void UpdateTexturePixels()
+        private bool ApplyTextureAssetSettings(Texture2D texture)
         {
+            bool changed = false;
+
+            if (texture.name != name)
+            {
+                texture.name = name;
+                changed = true;
+            }
+
+            if (texture.hideFlags != HideFlags.None)
+            {
+                texture.hideFlags = HideFlags.None;
+                changed = true;
+            }
+
+            return changed;
+        }
+
+        private bool UpdateTexturePixels()
+        {
+            bool changed = false;
+
             if (generatedTexture.width != width || generatedTexture.height != TextureHeight)
+            {
                 generatedTexture.Reinitialize(width, TextureHeight, TextureFormat.RGBA32, false);
+                changed = true;
+            }
 
-            generatedTexture.wrapMode = TextureWrapMode.Clamp;
-            generatedTexture.filterMode = FilterMode.Bilinear;
+            if (generatedTexture.wrapMode != TextureWrapMode.Clamp)
+            {
+                generatedTexture.wrapMode = TextureWrapMode.Clamp;
+                changed = true;
+            }
 
-            Color[] pixels = new Color[width];
+            if (generatedTexture.filterMode != FilterMode.Bilinear)
+            {
+                generatedTexture.filterMode = FilterMode.Bilinear;
+                changed = true;
+            }
+
+            Color32[] pixels = new Color32[width];
             float denominator = width > 1 ? width - 1f : 1f;
 
             for (int x = 0; x < width; x++)
@@ -157,9 +213,56 @@ namespace Control.Tools
                 pixels[x] = gradient.Evaluate(t);
             }
 
-            generatedTexture.SetPixels(pixels);
-            generatedTexture.Apply(false, false);
+            if (changed || !TexturePixelsMatch(pixels))
+            {
+                generatedTexture.SetPixels32(pixels);
+                generatedTexture.Apply(false, false);
+                changed = true;
+            }
+
+            return changed;
+        }
+
+        private bool TexturePixelsMatch(Color32[] expectedPixels)
+        {
+            if (!generatedTexture.isReadable)
+                return false;
+
+            Color32[] existingPixels = generatedTexture.GetPixels32();
+            if (existingPixels.Length != expectedPixels.Length)
+                return false;
+
+            for (int i = 0; i < expectedPixels.Length; i++)
+            {
+                if (!existingPixels[i].Equals(expectedPixels[i]))
+                    return false;
+            }
+
+            return true;
         }
 #endif
+
+        [Serializable]
+        private struct LegacyOdinSerializationData
+        {
+            public int SerializedFormat;
+            public byte[] SerializedBytes;
+            public List<UnityObject> ReferencedUnityObjects;
+            public string SerializedBytesString;
+            public UnityObject Prefab;
+            public List<UnityObject> PrefabModificationsReferencedUnityObjects;
+            public List<string> PrefabModifications;
+            public List<LegacyOdinSerializationNode> SerializationNodes;
+        }
+
+        [Serializable]
+        private struct LegacyOdinSerializationNode
+        {
+            public string Name;
+            public int Entry;
+            public int DataFormat;
+            public string StringData;
+            public byte[] Data;
+        }
     }
 }

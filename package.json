@@ -1,6 +1,6 @@
 {
   "name": "com.control-tools.gradient-texture-generator",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "displayName": "Control Tools - Gradient Texture Generator",
   "description": "ScriptableObject tooling for generating 1D texture assets from Unity gradients.",
   "unity": "6000.0",
