@@ -1,0 +1,38 @@
+{
+  "name": "com.control-tools.gradient-texture-generator",
+  "version": "0.1.0",
+  "displayName": "Control Tools - Gradient Texture Generator",
+  "description": "ScriptableObject tooling for generating 1D texture assets from Unity gradients.",
+  "unity": "6000.0",
+  "license": "MIT",
+  "author": {
+    "name": "Control Tools",
+    "url": "https://github.com/PoleonDe"
+  },
+  "documentationUrl": "https://github.com/PoleonDe/Unity-Tools-Gradient-Texture-Generator#readme",
+  "changelogUrl": "https://github.com/PoleonDe/Unity-Tools-Gradient-Texture-Generator/blob/main/CHANGELOG.md",
+  "licensesUrl": "https://github.com/PoleonDe/Unity-Tools-Gradient-Texture-Generator/blob/main/LICENSE.md",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PoleonDe/Unity-Tools-Gradient-Texture-Generator.git"
+  },
+  "bugs": {
+    "url": "https://github.com/PoleonDe/Unity-Tools-Gradient-Texture-Generator/issues"
+  },
+  "keywords": [
+    "unity",
+    "tools",
+    "editor",
+    "gradient",
+    "texture",
+    "generator",
+    "control-tools"
+  ],
+  "samples": [
+    {
+      "displayName": "Basic Usage",
+      "description": "Basic notes for creating gradient texture generator assets.",
+      "path": "Samples~/Basic Usage"
+    }
+  ]
+}
